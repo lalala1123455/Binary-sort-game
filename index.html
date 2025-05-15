@@ -2,29 +2,27 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>Binary Games</title>
+  <title>Binary Games Suite</title>
   <style>
-    :root{--bg:#0d0d0d;--fg:#0f0;--border:#333;--err:#f55;--ok:#5f5;}
+    :root{
+      --bg:#0d0d0d;--fg:#0f0;--border:#333;--err:#f55;--ok:#5f5;
+      --font:monospace;
+    }
     *{box-sizing:border-box;}
-    body{margin:0;background:var(--bg);color:var(--fg);font-family:monospace;display:flex;flex-direction:column;align-items:center;padding:2rem;}
+    body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);display:flex;flex-direction:column;align-items:center;padding:2rem;gap:1rem;}
     h1{margin:0 0 1rem 0;text-align:center;}
     button{background:#000;border:1px solid var(--border);color:var(--fg);padding:.6rem 1.2rem;margin:.4rem;font-size:1rem;cursor:pointer;}
     button:hover{background:#133113;}
     #container{width:100%;max-width:1000px;}
-    .hidden{display:none;} /* utility */
-
-    /* Sorting game reused styles */
-    .level{display:flex;flex-direction:column;align-items:center;gap:.5rem;}
-    .msg{height:1.2rem;text-align:center;font-size:1rem;}
+    .hidden{display:none;}
+    /* shared card styles */
     .row{display:flex;gap:.3rem;flex-wrap:wrap;justify-content:center;}
     .card{padding:.5rem 0;text-align:center;background:#000;border:1px solid var(--border);cursor:pointer;user-select:none;transition:transform .2s;white-space:nowrap;}
     .selected{outline:2px solid red;}
-    .swap{animation:flip .4s;}
-    @keyframes flip{0%{transform:rotateY(0);}50%{transform:rotateY(90deg);}100%{transform:rotateY(0);}}
-
-    /* Conversion game */
-    #convInput{width:120px;padding:.3rem;background:#111;color:var(--fg);border:1px solid var(--border);text-align:center;}
-    #convMessage{height:1.2rem;margin-top:.5rem;}
+    .swap{animation:flip .4s;}@keyframes flip{0%{transform:rotateY(0);}50%{transform:rotateY(90deg);}100%{transform:rotateY(0);}}
+    /* input */
+    input[type="text"]{background:#111;color:var(--fg);border:1px solid var(--border);padding:.3rem;text-align:center;font-family:var(--font);}  
+    .msg{height:1.2rem;text-align:center;font-size:1rem;}
   </style>
 </head>
 <body>
@@ -33,7 +31,8 @@
     <div id="menu">
       <h1>Binary Games</h1>
       <button id="btnSort">Binary Sorting Game</button>
-      <button id="btnConv">Binary→Decimal Conversion Game</button>
+      <button id="btnBinToDec">Binary → Decimal Game</button>
+      <button id="btnDecToBin">Decimal → Binary Game</button>
     </div>
 
     <!-- SORT GAME -->
@@ -42,174 +41,72 @@
       <div id="sortTimer">Time: 0.0s</div>
       <div id="levels"></div>
       <div id="sortFinal" class="msg"></div>
-      <button id="backFromSort">← Back to Menu</button>
+      <button class="backBtn">← Back to Menu</button>
     </div>
 
-    <!-- CONVERSION GAME -->
-    <div id="convGame" class="hidden" style="text-align:center;">
-      <h1>Binary → Decimal Conversion Game</h1>
+    <!-- BINARY TO DECIMAL GAME -->
+    <div id="binDecGame" class="hidden" style="text-align:center;">
+      <h1>Binary → Decimal</h1>
       <div>Convert this binary number:</div>
       <div id="binDisplay" style="font-size:1.6rem;margin:.6rem 0;"></div>
-      <input id="convInput" type="number" placeholder="decimal" />
-      <button id="submitAns">Submit</button>
-      <div id="convMessage"></div>
-      <div id="convScore" style="margin-top:.5rem;">Score: 0</div>
-      <button id="backFromConv">← Back to Menu</button>
+      <input id="binDecInput" type="number" placeholder="decimal" />
+      <button id="binDecSubmit">Submit</button>
+      <div id="binDecMsg" class="msg"></div>
+      <div id="binDecScore" style="margin-top:.5rem;">Score: 0</div>
+      <button class="backBtn">← Back to Menu</button>
+    </div>
+
+    <!-- DECIMAL TO BINARY GAME -->
+    <div id="decBinGame" class="hidden" style="text-align:center;">
+      <h1>Decimal → Binary</h1>
+      <div>Convert this decimal number:</div>
+      <div id="decDisplay" style="font-size:1.6rem;margin:.6rem 0;"></div>
+      <input id="decBinInput" type="text" placeholder="binary (e.g., 1011)" />
+      <button id="decBinSubmit">Submit</button>
+      <div id="decBinMsg" class="msg"></div>
+      <div id="decBinScore" style="margin-top:.5rem;">Score: 0</div>
+      <button class="backBtn">← Back to Menu</button>
     </div>
   </div>
 
 <script>
-// ---------- MENU NAVIGATION ----------
-const menuEl=document.getElementById('menu');
-const sortEl=document.getElementById('sortGame');
-const convEl=document.getElementById('convGame');
+// ---------- NAVIGATION ----------
+const qs=id=>document.getElementById(id);
+const hideAll=()=>[menuEl,sortEl,binDecEl,decBinEl].forEach(e=>e.classList.add('hidden'));
+const menuEl=qs('menu');
+const sortEl=qs('sortGame');
+const binDecEl=qs('binDecGame');
+const decBinEl=qs('decBinGame');
+// Register menu buttons
+qs('btnSort').onclick=()=>{hideAll();startSortingGame();};
+qs('btnBinToDec').onclick=()=>{hideAll();startBinDecGame();};
+qs('btnDecToBin').onclick=()=>{hideAll();startDecBinGame();};
+// Back buttons
+for(const btn of document.querySelectorAll('.backBtn')){btn.onclick=()=>{stopTimers();hideAll();menuEl.classList.remove('hidden');};}
+function stopTimers(){clearInterval(sortTimerId);}
 
-document.getElementById('btnSort').onclick=()=>{menuEl.classList.add('hidden');startSortingGame();}
-document.getElementById('btnConv').onclick=()=>{menuEl.classList.add('hidden');startConversionGame();}
+// ---------- SORTING GAME ----------
+const levelConfigs=[{size:8,bits:5},{size:10,bits:6},{size:12,bits:7}];
+let levels=[];let sortTimerId=null;let sortStart=0;
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
+const toBin=(n,b)=>n.toString(2).padStart(b,'0');
+function startSortingGame(){sortEl.classList.remove('hidden');levels=[];qs('levels').innerHTML='';qs('sortFinal').textContent='';sortStart=performance.now();sortTimerId=setInterval(()=>{qs('sortTimer').textContent=`Time: ${((performance.now()-sortStart)/1000).toFixed(1)}s`;},100);createLevel(0);} 
+function createLevel(idx){const cfg=levelConfigs[idx];const nums=shuffle([...Array(1<<cfg.bits).keys()]).slice(0,cfg.size);const lvEl=document.createElement('div');lvEl.className='level';const msg=document.createElement('div');msg.className='msg';msg.textContent=`${idx+1}段目：昇順に並べ替え`;const row=document.createElement('div');row.className='row';lvEl.append(msg,row);qs('levels').appendChild(lvEl);levels[idx]={cfg,nums,row,msg,first:null,solved:false};renderLevel(idx);} 
+function renderLevel(idx){const {nums,row,cfg}=levels[idx];row.innerHTML='';const w=(cfg.bits*12)+20;nums.forEach((n,i)=>{const c=document.createElement('div');c.className='card';c.textContent=toBin(n,cfg.bits);c.style.width=`${w}px`;c.onclick=()=>selectCard(idx,i,c);row.appendChild(c);});}
+function selectCard(l,i,card){const st=levels[l];if(st.solved)return;if(st.first===null){st.first=i;card.classList.add('selected');}else if(st.first===i){st.first=null;card.classList.remove('selected');}else{[st.nums[st.first],st.nums[i]]=[st.nums[i],st.nums[st.first]];renderLevel(l);st.first=null;checkSolved(l);} }
+function checkSolved(l){const st=levels[l];if(st.nums.every((v,i)=>v===[...st.nums].sort((a,b)=>a-b)[i])){st.solved=true;st.msg.textContent=`🎉 ${l+1}段目クリア！`;if(l+1<levelConfigs.length)setTimeout(()=>createLevel(l+1),800);else{clearInterval(sortTimerId);qs('sortFinal').textContent=`全クリア！ Total Time: ${((performance.now()-sortStart)/1000).toFixed(1)}s`;}}}
 
-document.getElementById('backFromSort').onclick=()=>{stopSortingTimer();sortEl.classList.add('hidden');menuEl.classList.remove('hidden');}
-document.getElementById('backFromConv').onclick=()=>{convEl.classList.add('hidden');menuEl.classList.remove('hidden');}
+// ---------- BINARY → DECIMAL GAME ----------
+let binScore=0, currentBin=0;function startBinDecGame(){binDecEl.classList.remove('hidden');binScore=0;qs('binDecScore').textContent='Score: 0';newBinQuestion();}
+function newBinQuestion(){const bits=Math.floor(Math.random()*4)+4;currentBin=Math.floor(Math.random()*(1<<bits));qs('binDisplay').textContent=toBin(currentBin,bits);qs('binDecInput').value='';qs('binDecInput').focus();qs('binDecMsg').textContent='';}
+qs('binDecSubmit').onclick=checkBinAnswer;qs('binDecInput').addEventListener('keydown',e=>{if(e.key==='Enter')checkBinAnswer();});
+function checkBinAnswer(){const val=parseInt(qs('binDecInput').value,10);const msg=qs('binDecMsg');if(val===currentBin){binScore++;msg.textContent='Correct!';msg.style.color='var(--ok)';}else{msg.textContent=`Wrong (ans: ${currentBin})`;msg.style.color='var(--err)';}qs('binDecScore').textContent=`Score: ${binScore}`;setTimeout(newBinQuestion,2000);}
 
-function hideAll(){menuEl.classList.add('hidden');sortEl.classList.add('hidden');convEl.classList.add('hidden');}
-
-// ---------- SORTING GAME CODE (multi-level) ----------
-const levelConfigs=[
-  {size:8 ,bits:5},
-  {size:10,bits:6},
-  {size:12,bits:7}
-];
-let levels=[];
-let sortTimerId=null;
-let sortStart=0;
-
-function startSortingGame(){
-  hideAll();
-  sortEl.classList.remove('hidden');
-  // reset container
-  document.getElementById('levels').innerHTML='';
-  document.getElementById('sortFinal').textContent='';
-  levels=[];
-  sortStart=performance.now();
-  sortTimerId=setInterval(()=>{
-    document.getElementById('sortTimer').textContent=`Time: ${((performance.now()-sortStart)/1000).toFixed(1)}s`;
-  },100);
-  createLevel(0);
-}
-function stopSortingTimer(){clearInterval(sortTimerId);}
-function toBin(n,bits){return n.toString(2).padStart(bits,'0');}
-function shuffle(arr){for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
-function createLevel(idx){
-  const cfg=levelConfigs[idx];
-  const maxVal=1<<cfg.bits;
-  const pool=Array.from({length:maxVal},(_,i)=>i);
-  shuffle(pool);
-  const nums=pool.slice(0,cfg.size);
-  const levelsContainer=document.getElementById('levels');
-  const levelEl=document.createElement('div');
-  levelEl.className='level';
-  const msg=document.createElement('div');
-  msg.className='msg';
-  msg.textContent=`${idx+1}段目：昇順に並べ替え`;
-  const row=document.createElement('div');
-  row.className='row';
-  levelEl.appendChild(msg);
-  levelEl.appendChild(row);
-  levelsContainer.appendChild(levelEl);
-  const state={cfg,nums,row,msg,firstSel:null,solved:false};
-  levels[idx]=state;
-  renderLevel(idx);
-}
-function renderLevel(idx){
-  const {nums,row,cfg}=levels[idx];
-  row.innerHTML='';
-  const cardWidth=(cfg.bits*12)+20;
-  nums.forEach((n,i)=>{
-    const card=document.createElement('div');
-    card.className='card';
-    card.textContent=toBin(n,cfg.bits);
-    card.style.width=`${cardWidth}px`;
-    card.dataset.level=idx;
-    card.dataset.index=i;
-    card.onclick=()=>selectCard(card);
-    row.appendChild(card);
-  });
-}
-function selectCard(card){
-  const lvl=parseInt(card.dataset.level);
-  const idx=parseInt(card.dataset.index);
-  const state=levels[lvl];
-  if(state.solved) return;
-  if(state.firstSel===null){
-    state.firstSel=idx;
-    card.classList.add('selected');
-  }else if(state.firstSel===idx){
-    state.firstSel=null;
-    card.classList.remove('selected');
-  }else{
-    swapCards(lvl,state.firstSel,idx);
-    state.firstSel=null;
-    [...state.row.children].forEach(c=>c.classList.remove('selected'));
-  }
-}
-function swapCards(lvl,i,j){
-  const state=levels[lvl];
-  [state.nums[i],state.nums[j]]=[state.nums[j],state.nums[i]];
-  renderLevel(lvl);
-  checkSolved(lvl);
-}
-function checkSolved(lvl){
-  const state=levels[lvl];
-  const sorted=[...state.nums].sort((a,b)=>a-b);
-  const ok=state.nums.every((n,i)=>n===sorted[i]);
-  if(ok){
-    state.solved=true;
-    state.msg.textContent=`🎉 ${lvl+1}段目クリア！`;
-    if(lvl+1<levelConfigs.length){
-      setTimeout(()=>createLevel(lvl+1),800);
-    }else{
-      stopSortingTimer();
-      const total=((performance.now()-sortStart)/1000).toFixed(1);
-      document.getElementById('sortFinal').textContent=`全クリア！ Total Time: ${total}s`;
-    }
-  }
-}
-
-// ---------- CONVERSION GAME CODE ----------
-let convScore=0, currentBin=0;
-function startConversionGame(){
-  hideAll();
-  convEl.classList.remove('hidden');
-  convScore=0;
-  document.getElementById('convScore').textContent='Score: 0';
-  document.getElementById('convMessage').textContent='';
-  newQuestion();
-}
-function newQuestion(){
-  const bits= Math.floor(Math.random()*4)+4; // 4-7 bits
-  currentBin=Math.floor(Math.random()*(1<<bits));
-  document.getElementById('binDisplay').textContent=currentBin.toString(2).padStart(bits,'0');
-  document.getElementById('convInput').value='';
-  document.getElementById('convInput').focus();
-}
-
-document.getElementById('submitAns').onclick=checkAnswer;
-// Press Enter key in input
- document.getElementById('convInput').addEventListener('keydown',e=>{if(e.key==='Enter')checkAnswer();});
-
-function checkAnswer(){
-  const val=parseInt(document.getElementById('convInput').value,10);
-  const msgEl=document.getElementById('convMessage');
-  if(val===currentBin){
-    convScore++;
-    msgEl.textContent='Correct!';
-    msgEl.style.color='var(--ok)';
-  }else{
-    msgEl.textContent=`Wrong (answer: ${currentBin})`;
-    msgEl.style.color='var(--err)';
-  }
-  document.getElementById('convScore').textContent=`Score: ${convScore}`;
-  setTimeout(()=>{msgEl.textContent='';newQuestion();},2000);
-}
+// ---------- DECIMAL → BINARY GAME ----------
+let decScore=0,currentDec=0;function startDecBinGame(){decBinEl.classList.remove('hidden');decScore=0;qs('decBinScore').textContent='Score: 0';newDecQuestion();}
+function newDecQuestion(){currentDec=Math.floor(Math.random()*128);qs('decDisplay').textContent=currentDec;qs('decBinInput').value='';qs('decBinInput').focus();qs('decBinMsg').textContent='';}
+qs('decBinSubmit').onclick=checkDecAnswer;qs('decBinInput').addEventListener('keydown',e=>{if(e.key==='Enter')checkDecAnswer();});
+function checkDecAnswer(){const binStr=qs('decBinInput').value.trim();const val=parseInt(binStr,2);const msg=qs('decBinMsg');if(binStr.match(/^[01]+$/)&&val===currentDec){decScore++;msg.textContent='Correct!';msg.style.color='var(--ok)';}else{msg.textContent=`Wrong (ans: ${currentDec.toString(2)})`;msg.style.color='var(--err)';}qs('decBinScore').textContent=`Score: ${decScore}`;setTimeout(newDecQuestion,2000);}  
 </script>
 </body>
 </html>
