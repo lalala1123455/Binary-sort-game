@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>Binary Games</title>
+  <style>
+    :root{--bg:#0d0d0d;--fg:#0f0;--border:#333;--err:#f55;--ok:#5f5;}
+    *{box-sizing:border-box;}
+    body{margin:0;background:var(--bg);color:var(--fg);font-family:monospace;display:flex;flex-direction:column;align-items:center;padding:2rem;}
+    h1{margin:0 0 1rem 0;text-align:center;}
+    button{background:#000;border:1px solid var(--border);color:var(--fg);padding:.6rem 1.2rem;margin:.4rem;font-size:1rem;cursor:pointer;}
+    button:hover{background:#133113;}
+    #container{width:100%;max-width:1000px;}
+    .hidden{display:none;} /* utility */
+
+    /* Sorting game reused styles */
+    .level{display:flex;flex-direction:column;align-items:center;gap:.5rem;}
+    .msg{height:1.2rem;text-align:center;font-size:1rem;}
+    .row{display:flex;gap:.3rem;flex-wrap:wrap;justify-content:center;}
+    .card{padding:.5rem 0;text-align:center;background:#000;border:1px solid var(--border);cursor:pointer;user-select:none;transition:transform .2s;white-space:nowrap;}
+    .selected{outline:2px solid red;}
+    .swap{animation:flip .4s;}
+    @keyframes flip{0%{transform:rotateY(0);}50%{transform:rotateY(90deg);}100%{transform:rotateY(0);}}
+
+    /* Conversion game */
+    #convInput{width:120px;padding:.3rem;background:#111;color:var(--fg);border:1px solid var(--border);text-align:center;}
+    #convMessage{height:1.2rem;margin-top:.5rem;}
+  </style>
+</head>
+<body>
+  <div id="container">
+    <!-- MENU -->
+    <div id="menu">
+      <h1>Binary Games</h1>
+      <button id="btnSort">Binary Sorting Game</button>
+      <button id="btnConv">Binary→Decimal Conversion Game</button>
+    </div>
+
+    <!-- SORT GAME -->
+    <div id="sortGame" class="hidden">
+      <h1>Binary Sorting Game</h1>
+      <div id="sortTimer">Time: 0.0s</div>
+      <div id="levels"></div>
+      <div id="sortFinal" class="msg"></div>
+      <button id="backFromSort">← Back to Menu</button>
+    </div>
+
+    <!-- CONVERSION GAME -->
+    <div id="convGame" class="hidden" style="text-align:center;">
+      <h1>Binary → Decimal Conversion Game</h1>
+      <div>Convert this binary number:</div>
+      <div id="binDisplay" style="font-size:1.6rem;margin:.6rem 0;"></div>
+      <input id="convInput" type="number" placeholder="decimal" />
+      <button id="submitAns">Submit</button>
+      <div id="convMessage"></div>
+      <div id="convScore" style="margin-top:.5rem;">Score: 0</div>
+      <button id="backFromConv">← Back to Menu</button>
+    </div>
+  </div>
+
+<script>
+// ---------- MENU NAVIGATION ----------
+const menuEl=document.getElementById('menu');
+const sortEl=document.getElementById('sortGame');
+const convEl=document.getElementById('convGame');
+
+document.getElementById('btnSort').onclick=()=>{menuEl.classList.add('hidden');startSortingGame();}
+document.getElementById('btnConv').onclick=()=>{menuEl.classList.add('hidden');startConversionGame();}
+
+document.getElementById('backFromSort').onclick=()=>{stopSortingTimer();sortEl.classList.add('hidden');menuEl.classList.remove('hidden');}
+document.getElementById('backFromConv').onclick=()=>{convEl.classList.add('hidden');menuEl.classList.remove('hidden');}
+
+function hideAll(){menuEl.classList.add('hidden');sortEl.classList.add('hidden');convEl.classList.add('hidden');}
+
+// ---------- SORTING GAME CODE (multi-level) ----------
+const levelConfigs=[
+  {size:8 ,bits:5},
+  {size:10,bits:6},
+  {size:12,bits:7}
+];
+let levels=[];
+let sortTimerId=null;
+let sortStart=0;
+
+function startSortingGame(){
+  hideAll();
+  sortEl.classList.remove('hidden');
+  // reset container
+  document.getElementById('levels').innerHTML='';
+  document.getElementById('sortFinal').textContent='';
+  levels=[];
+  sortStart=performance.now();
+  sortTimerId=setInterval(()=>{
+    document.getElementById('sortTimer').textContent=`Time: ${((performance.now()-sortStart)/1000).toFixed(1)}s`;
+  },100);
+  createLevel(0);
+}
+function stopSortingTimer(){clearInterval(sortTimerId);}
+function toBin(n,bits){return n.toString(2).padStart(bits,'0');}
+function shuffle(arr){for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
+function createLevel(idx){
+  const cfg=levelConfigs[idx];
+  const maxVal=1<<cfg.bits;
+  const pool=Array.from({length:maxVal},(_,i)=>i);
+  shuffle(pool);
+  const nums=pool.slice(0,cfg.size);
+  const levelsContainer=document.getElementById('levels');
+  const levelEl=document.createElement('div');
+  levelEl.className='level';
+  const msg=document.createElement('div');
+  msg.className='msg';
+  msg.textContent=`${idx+1}段目：昇順に並べ替え`;
+  const row=document.createElement('div');
+  row.className='row';
+  levelEl.appendChild(msg);
+  levelEl.appendChild(row);
+  levelsContainer.appendChild(levelEl);
+  const state={cfg,nums,row,msg,firstSel:null,solved:false};
+  levels[idx]=state;
+  renderLevel(idx);
+}
+function renderLevel(idx){
+  const {nums,row,cfg}=levels[idx];
+  row.innerHTML='';
+  const cardWidth=(cfg.bits*12)+20;
+  nums.forEach((n,i)=>{
+    const card=document.createElement('div');
+    card.className='card';
+    card.textContent=toBin(n,cfg.bits);
+    card.style.width=`${cardWidth}px`;
+    card.dataset.level=idx;
+    card.dataset.index=i;
+    card.onclick=()=>selectCard(card);
+    row.appendChild(card);
+  });
+}
+function selectCard(card){
+  const lvl=parseInt(card.dataset.level);
+  const idx=parseInt(card.dataset.index);
+  const state=levels[lvl];
+  if(state.solved) return;
+  if(state.firstSel===null){
+    state.firstSel=idx;
+    card.classList.add('selected');
+  }else if(state.firstSel===idx){
+    state.firstSel=null;
+    card.classList.remove('selected');
+  }else{
+    swapCards(lvl,state.firstSel,idx);
+    state.firstSel=null;
+    [...state.row.children].forEach(c=>c.classList.remove('selected'));
+  }
+}
+function swapCards(lvl,i,j){
+  const state=levels[lvl];
+  [state.nums[i],state.nums[j]]=[state.nums[j],state.nums[i]];
+  renderLevel(lvl);
+  checkSolved(lvl);
+}
+function checkSolved(lvl){
+  const state=levels[lvl];
+  const sorted=[...state.nums].sort((a,b)=>a-b);
+  const ok=state.nums.every((n,i)=>n===sorted[i]);
+  if(ok){
+    state.solved=true;
+    state.msg.textContent=`🎉 ${lvl+1}段目クリア！`;
+    if(lvl+1<levelConfigs.length){
+      setTimeout(()=>createLevel(lvl+1),800);
+    }else{
+      stopSortingTimer();
+      const total=((performance.now()-sortStart)/1000).toFixed(1);
+      document.getElementById('sortFinal').textContent=`全クリア！ Total Time: ${total}s`;
+    }
+  }
+}
+
+// ---------- CONVERSION GAME CODE ----------
+let convScore=0, currentBin=0;
+function startConversionGame(){
+  hideAll();
+  convEl.classList.remove('hidden');
+  convScore=0;
+  document.getElementById('convScore').textContent='Score: 0';
+  document.getElementById('convMessage').textContent='';
+  newQuestion();
+}
+function newQuestion(){
+  const bits= Math.floor(Math.random()*4)+4; // 4-7 bits
+  currentBin=Math.floor(Math.random()*(1<<bits));
+  document.getElementById('binDisplay').textContent=currentBin.toString(2).padStart(bits,'0');
+  document.getElementById('convInput').value='';
+  document.getElementById('convInput').focus();
+}
+
+document.getElementById('submitAns').onclick=checkAnswer;
+// Press Enter key in input
+ document.getElementById('convInput').addEventListener('keydown',e=>{if(e.key==='Enter')checkAnswer();});
+
+function checkAnswer(){
+  const val=parseInt(document.getElementById('convInput').value,10);
+  const msgEl=document.getElementById('convMessage');
+  if(val===currentBin){
+    convScore++;
+    msgEl.textContent='Correct!';
+    msgEl.style.color='var(--ok)';
+  }else{
+    msgEl.textContent=`Wrong (answer: ${currentBin})`;
+    msgEl.style.color='var(--err)';
+  }
+  document.getElementById('convScore').textContent=`Score: ${convScore}`;
+  setTimeout(()=>{msgEl.textContent='';newQuestion();},2000);
+}
+</script>
+</body>
+</html>
